@@ -1,0 +1,599 @@
+---
+title: "Figure2_and_suppfig2_scripts"
+author: "Sreemol Gokuladhas"
+date: "22/11/2021"
+output: html_document
+---
+
+Figure 2A
+```{r}
+
+# Read GTEx expression dataset - RNA-seq (median TPM)
+
+gtex_tpm <- fread("../data/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_median_tpm.gct.gz",
+                       header = T, sep = "\t", skip=2)
+
+library(data.table)
+
+# Read LGRN data
+
+lgrn <- fread("../results/significant_eqtls_liver_fdr_recalculated.txt", 
+              header = T, sep = "\t")
+
+# Read gtex cis-eqtls file
+# 
+gtex <- fread("../data/Liver.v8.signif_variant_gene_pairs_short_with_ids.txt",
+              header = T, sep = "\t")
+
+## Subset liver only expression values
+
+gtex_liver <- gtex_tpm %>% dplyr::select(Description, Liver) %>% 
+  dplyr::filter(Liver > 0) %>% 
+  unique()
+
+names(gtex_liver) <- c("gene", "expression")
+
+gtex_liver$interaction_type <- "All genes (incl. LGRN-eQTL targets)"
+
+## cis only lgrn genes
+
+cis_genes <- lgrn %>% dplyr::filter(interaction_type == "Cis") %>% 
+  dplyr::select(gene, expression, interaction_type) %>% 
+  unique()
+
+## trans only lgrn genes
+
+trans_genes <- lgrn %>% dplyr::filter(interaction_type %like% "Trans") %>% 
+  dplyr::select(gene, expression, interaction_type) %>% 
+  unique()
+
+## both cis and trans lgrn genes
+
+cis_trans_intersect <- intersect(cis_genes$gene, trans_genes$gene)
+
+cis_trans_genes <- lgrn %>% 
+  dplyr::select(gene, expression, interaction_type) %>% 
+  dplyr::filter(gene %in% cis_trans_intersect) %>% 
+  dplyr::mutate(interaction_type = "Cis- and trans-eQTL targets") %>% 
+  unique()
+
+#print(length(unique(cis_trans_genes$gene)))
+
+# cis only
+
+cis_only <- unique(setdiff(cis_genes$gene, cis_trans_genes$gene))
+
+cis_only_genes <- cis_genes %>% filter(gene %in% cis_only) %>% 
+  mutate(interaction_type = "Cis-eQTL targets") %>% 
+  unique()
+
+# trans only
+
+trans_only <- unique(setdiff(trans_genes$gene, cis_trans_genes$gene))
+
+trans_only_genes <- trans_genes %>% filter(gene %in% trans_only) %>% 
+  mutate(interaction_type = "Trans-eQTL targets") %>% 
+  unique()
+
+lgrn_genes <- unique(rbind(cis_only_genes, trans_only_genes, cis_trans_genes))
+
+gtex_liver_only_genes <- gtex_liver %>% filter(!gene %in% lgrn_genes$gene) %>% 
+  mutate(interaction_type = "Genes (not incl. LGRN-eQTL targets)") %>% 
+  unique()
+
+# Bind dfs
+
+expression_df <- unique(rbind(cis_only_genes, trans_only_genes, 
+                              cis_trans_genes, gtex_liver, gtex_liver_only_genes))
+
+
+## plot the graph
+
+expression_df$interaction_type <- factor(expression_df$interaction_type, 
+                                         levels = c("Cis-eQTL targets",
+                                                    "Trans-eQTL targets",
+                                                    "Cis- and trans-eQTL targets",
+                                                    "All genes (incl. LGRN-eQTL targets)", 
+                                                    "Genes (not incl. LGRN-eQTL targets)"))
+expression_df$count <- table(expression_df$interaction_type)[expression_df$interaction_type]
+
+library(tidyverse)
+library(ggpubr)
+
+#pdf("../plots/figure2a.pdf", width = 5, height = 3.5)
+compare_groups <- list(c("Cis-eQTL targets", "All genes (incl. LGRN-eQTL targets)"), 
+                       c("Trans-eQTL targets", "All genes (incl. LGRN-eQTL targets)"), 
+                       c("Cis- and trans-eQTL targets", "All genes (incl. LGRN-eQTL targets)"), 
+                       c("Genes (not incl. LGRN-eQTL targets)", "All genes (incl. LGRN-eQTL targets)"))
+expression_df %>% ggplot(aes(interaction_type, log2(expression), fill=interaction_type)) +
+  geom_violin(trim = T, alpha = 0.7, width = 0.7, size = 0.1) +
+  geom_boxplot(width = 0.1, alpha = 1, outlier.shape = 19, outlier.size = 0.3, lwd=0.2) +
+  geom_text(aes(label = paste0("N=", ..count..), y = ..count../sum(..count..)), stat= "count", 
+            vjust = -19, size = 3) +
+  scale_y_continuous("Gene expression log2(median TPM)", limits = c(-11, 18), 
+                     breaks = seq(-11, 18, by = 5)) +
+  scale_x_discrete(name = "",
+                   labels = function(x) str_wrap(x, width = 10)) +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(size = 0.3, colour = "white"),
+        #panel.background = element_rect(fill = "gray95"),
+        panel.border = element_rect(colour = "black", color="black", size=0.2),
+        axis.text = element_text(size = 7),
+        axis.title = element_text(size = 8),
+        legend.position = "None")+
+  #stat_compare_means(comparisons = compare_groups, label.y = c(15,16,17,18)) +
+  stat_compare_means(method = "kruskal.test", label.y = 18, size = 2.5) +
+  theme_minimal() 
+ #dev.off()
+
+```
+
+
+## Figure 2B and supplementary figure 2A
+```{r}
+
+# Read GTEx expression dataset - RNA-seq (median TPM)
+
+gtex_tpm <- fread("../data/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_median_tpm.gct.gz",
+                       header = T, sep = "\t", skip=2)
+
+gtex_tpm_long <- melt(gtex_tpm, id.vars = c("Description", "Name"))
+
+gtex_tpm_liver <- gtex_tpm_long %>%  filter(variable == "Liver") %>%  unique()
+
+# Read LGRN data
+
+lgrn <- fread("../results/significant_eqtls_liver_fdr_recalculated.txt", 
+              header = T, sep = "\t")
+
+# Read GTEx cis eQTLs file
+# 
+gtex_eqtls <- fread("../data/Liver.v8.signif_variant_gene_pairs_short_with_ids.txt", 
+                    header = T, sep = "\t")
+names(gtex_eqtls)[3] <- "pval"
+names(gtex_eqtls)[4] <- "snp"
+
+## Remove mitochondrial genes, ribosomal RNAs and TPM <= 0
+## 
+gtex_no_mt_rrna <- gtex_tpm_liver %>% 
+  filter(!Description %like% "MT-" & !Description %like% "rRNA" & value > 0) %>% 
+  mutate(quartile = ntile(-value, 10)) %>% 
+  dplyr::select(Description, variable, value, quartile)
+
+## ## first bin genes expressed in GTEx tissues (all)
+## 
+first_bin_genes <- gtex_no_mt_rrna %>% filter(quartile == 1) %>% 
+  dplyr::select(Description, value) %>% 
+  unique()
+print(length(unique(first_bin_genes$Description))) #2653
+
+# LGRN (N = 842)
+first_bin_genes_in_lgrn <- lgrn %>% 
+  filter(gene %in% first_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# GTEx (N = 653)
+first_bin_genes_in_gtex <- gtex_eqtls %>% 
+  filter(gene %in% first_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# To plot eQTLs number distribution
+# 
+names(first_bin_genes_in_lgrn)[2] <- "In LGRN"
+names(first_bin_genes_in_gtex)[2] <- "In GTEx" 
+
+lgrn_gtex_first_bin_eqtls <- merge(first_bin_genes_in_lgrn,first_bin_genes_in_gtex, by="gene", all=T)
+lgrn_gtex_first_bin_eqtls_plot <- melt(lgrn_gtex_first_bin_eqtls, id.vars = "gene")
+
+## second bin genes expressed in GTEx tissues (all)
+## 
+second_bin_genes <- gtex_no_mt_rrna %>% filter(quartile == 2)
+print(length(unique(second_bin_genes$Description))) #2653
+
+# LGRN (N = 1055)
+second_bin_genes_in_lgrn <- lgrn %>% 
+  filter(gene %in% second_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# GTEx (N = 710)
+second_bin_genes_in_gtex <- gtex_eqtls %>% 
+  filter(gene %in% second_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# To plot eQTLs number distribution
+# 
+names(second_bin_genes_in_lgrn)[2] <- "In LGRN"
+names(second_bin_genes_in_gtex)[2] <- "In GTEx" 
+
+lgrn_gtex_second_bin_eqtls <- merge(second_bin_genes_in_lgrn,second_bin_genes_in_gtex, by="gene", all=T)
+lgrn_gtex_second_bin_eqtls_plot <- melt(lgrn_gtex_second_bin_eqtls, id.vars = "gene")
+
+## third bin genes expressed in GTEx tissues (all)
+## 
+third_bin_genes <- gtex_no_mt_rrna %>% filter(quartile == 3)
+print(length(unique(third_bin_genes$Description))) #2653
+
+# LGRN (N = 1162)
+third_bin_genes_in_lgrn <- lgrn %>% 
+  filter(gene %in% third_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# GTEx (N = 738)
+third_bin_genes_in_gtex <- gtex_eqtls %>% 
+  filter(gene %in% third_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# To plot eQTLs number distribution
+# 
+names(third_bin_genes_in_lgrn)[2] <- "In LGRN"
+names(third_bin_genes_in_gtex)[2] <- "In GTEx" 
+
+lgrn_gtex_third_bin_eqtls <- merge(third_bin_genes_in_lgrn,third_bin_genes_in_gtex, by="gene", all=T)
+lgrn_gtex_third_bin_eqtls_plot <- melt(lgrn_gtex_third_bin_eqtls, id.vars = "gene")
+
+## fourth bin genes expressed in GTEx tissues (all)
+## 
+fourth_bin_genes <- gtex_no_mt_rrna %>% filter(quartile == 4)
+print(length(unique(fourth_bin_genes$Description))) #2652
+
+# LGRN (N = 1207)
+fourth_bin_genes_in_lgrn <- lgrn %>% 
+  filter(gene %in% fourth_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# GTEx (N = 761)
+fourth_bin_genes_in_gtex <- gtex_eqtls %>% 
+  filter(gene %in% fourth_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# To plot eQTLs number distribution
+# 
+names(fourth_bin_genes_in_lgrn)[2] <- "In LGRN"
+names(fourth_bin_genes_in_gtex)[2] <- "In GTEx" 
+
+lgrn_gtex_fourth_bin_eqtls <- merge(fourth_bin_genes_in_lgrn,fourth_bin_genes_in_gtex, by="gene", all=T)
+lgrn_gtex_fourth_bin_eqtls_plot <- melt(lgrn_gtex_fourth_bin_eqtls, id.vars = "gene")
+
+## fifth bin genes expressed in GTEx tissues (all)
+## 
+fifth_bin_genes <- gtex_no_mt_rrna %>% filter(quartile == 5)
+print(length(unique(fifth_bin_genes$Description))) #2653
+
+# LGRN (N = 1094)
+fifth_bin_genes_in_lgrn <- lgrn %>% 
+  filter(gene %in% fifth_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# GTEx (N = 794)
+fifth_bin_genes_in_gtex <- gtex_eqtls %>% 
+  filter(gene %in% fifth_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# To plot eQTLs number distribution
+# 
+names(fifth_bin_genes_in_lgrn)[2] <- "In LGRN"
+names(fifth_bin_genes_in_gtex)[2] <- "In GTEx" 
+
+lgrn_gtex_fifth_bin_eqtls <- merge(fifth_bin_genes_in_lgrn,fifth_bin_genes_in_gtex, by="gene", all=T)
+lgrn_gtex_fifth_bin_eqtls_plot <- melt(lgrn_gtex_fifth_bin_eqtls, id.vars = "gene")
+
+## sixth bin genes expressed in GTEx tissues (all)
+## 
+sixth_bin_genes <- gtex_no_mt_rrna %>% filter(quartile == 6)
+print(length(unique(sixth_bin_genes$Description))) #2644
+
+# LGRN (N = 918)
+sixth_bin_genes_in_lgrn <- lgrn %>% 
+  filter(gene %in% sixth_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# GTEx (N = 723)
+sixth_bin_genes_in_gtex <- gtex_eqtls %>% 
+  filter(gene %in% sixth_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# To plot eQTLs number distribution
+# 
+names(sixth_bin_genes_in_lgrn)[2] <- "In LGRN"
+names(sixth_bin_genes_in_gtex)[2] <- "In GTEx" 
+
+lgrn_gtex_sixth_bin_eqtls <- merge(sixth_bin_genes_in_lgrn,sixth_bin_genes_in_gtex, by="gene", all=T)
+lgrn_gtex_sixth_bin_eqtls_plot <- melt(lgrn_gtex_sixth_bin_eqtls, id.vars = "gene")
+
+## seventh bin genes expressed in GTEx tissues (all)
+## 
+seventh_bin_genes <- gtex_no_mt_rrna %>% filter(quartile == 7)
+print(length(unique(seventh_bin_genes$Description))) #2640
+
+# LGRN (N = 734)
+seventh_bin_genes_in_lgrn <- lgrn %>% 
+  filter(gene %in% seventh_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# GTEx (N = 573)
+seventh_bin_genes_in_gtex <- gtex_eqtls %>% 
+  filter(gene %in% seventh_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# To plot eQTLs number distribution
+# 
+names(seventh_bin_genes_in_lgrn)[2] <- "In LGRN"
+names(seventh_bin_genes_in_gtex)[2] <- "In GTEx" 
+
+lgrn_gtex_seventh_bin_eqtls <- merge(seventh_bin_genes_in_lgrn,seventh_bin_genes_in_gtex, by="gene", all=T)
+lgrn_gtex_seventh_bin_eqtls_plot <- melt(lgrn_gtex_seventh_bin_eqtls, id.vars = "gene")
+
+## eighth bin genes expressed in GTEx tissues (all)
+## 
+eighth_bin_genes <- gtex_no_mt_rrna %>% filter(quartile == 8)
+print(length(unique(eighth_bin_genes$Description))) #2642
+
+# LGRN (N = 596)
+eighth_bin_genes_in_lgrn <- lgrn %>% 
+  filter(gene %in% eighth_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# GTEx (N = 441)
+eighth_bin_genes_in_gtex <- gtex_eqtls %>% 
+  filter(gene %in% eighth_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# To plot eQTLs number distribution
+# 
+names(eighth_bin_genes_in_lgrn)[2] <- "In LGRN"
+names(eighth_bin_genes_in_gtex)[2] <- "In GTEx" 
+
+lgrn_gtex_eighth_bin_eqtls <- merge(eighth_bin_genes_in_lgrn,eighth_bin_genes_in_gtex, by="gene", all=T)
+lgrn_gtex_eighth_bin_eqtls_plot <- melt(lgrn_gtex_eighth_bin_eqtls, id.vars = "gene")
+
+## ninth bin genes expressed in GTEx tissues (all)
+## 
+ninth_bin_genes <- gtex_no_mt_rrna %>% filter(quartile == 9)
+print(length(unique(ninth_bin_genes$Description))) #2648
+
+# LGRN (N = 432)
+ninth_bin_genes_in_lgrn <- lgrn %>% 
+  filter(gene %in% ninth_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# GTEx (N = 292)
+ninth_bin_genes_in_gtex <- gtex_eqtls %>% 
+  filter(gene %in% ninth_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# To plot eQTLs number distribution
+# 
+names(ninth_bin_genes_in_lgrn)[2] <- "In LGRN"
+names(ninth_bin_genes_in_gtex)[2] <- "In GTEx" 
+
+lgrn_gtex_ninth_bin_eqtls <- merge(ninth_bin_genes_in_lgrn,ninth_bin_genes_in_gtex, by="gene", all=T)
+lgrn_gtex_ninth_bin_eqtls_plot <- melt(lgrn_gtex_ninth_bin_eqtls, id.vars = "gene")
+
+## tenth bin genes expressed in GTEx tissues (all)
+## 
+tenth_bin_genes <- gtex_no_mt_rrna %>% filter(quartile == 10) %>%  unique()
+print(length(unique(tenth_bin_genes$Description))) #2651
+
+# LGRN (N = 61)
+tenth_bin_genes_in_lgrn <- lgrn %>% 
+  filter(gene %in% tenth_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# GTEx (N = 47)
+tenth_bin_genes_in_gtex <- gtex_eqtls %>% 
+  filter(gene %in% tenth_bin_genes$Description) %>% 
+  dplyr::select(gene, snp) %>% 
+  group_by(gene) %>% 
+  dplyr::summarise(no_of_eqtls = as.numeric(paste(length(unique(snp)))))
+
+# To plot eQTLs number distribution
+# 
+names(tenth_bin_genes_in_lgrn)[2] <- "In LGRN"
+names(tenth_bin_genes_in_gtex)[2] <- "In GTEx" 
+
+lgrn_gtex_tenth_bin_eqtls <- merge(tenth_bin_genes_in_lgrn,tenth_bin_genes_in_gtex, by="gene", all=T)
+lgrn_gtex_tenth_bin_eqtls_plot <- melt(lgrn_gtex_tenth_bin_eqtls, id.vars = "gene")
+
+# create a dataframe to plot the results for the genes that have and not have eQTLs in liver
+# 
+first_bin_genes_binary_df <- data.frame("GTEx" = c(653, 2000),
+                                      "LGRN" = c(842, 1811),
+                                      "Category" = c("have eQTLs", "have no eQTLs")) 
+first_bin_genes_binary_df$bin <- "I"
+
+second_bin_genes_binary_df <- data.frame("GTEx" = c(710, 1943),
+                                      "LGRN" = c(1055, 1598),
+                                      "Category" = c("have eQTLs", "have no eQTLs")) 
+second_bin_genes_binary_df$bin <- "II"
+
+third_bin_genes_binary_df <- data.frame("GTEx" = c(738, 1915),
+                                      "LGRN" = c(1162, 1491),
+                                      "Category" = c("have eQTLs", "have no eQTLs")) 
+third_bin_genes_binary_df$bin <- "III"
+
+fourth_bin_genes_binary_df <- data.frame("GTEx" = c(761, 1891),
+                                      "LGRN" = c(1207, 1445),
+                                      "Category" = c("have eQTLs", "have no eQTLs")) 
+fourth_bin_genes_binary_df$bin <- "IV"
+
+fifth_bin_genes_binary_df <- data.frame("GTEx" = c(794, 1859),
+                                      "LGRN" = c(1094, 1559),
+                                      "Category" = c("have eQTLs", "have no eQTLs")) 
+fifth_bin_genes_binary_df$bin <- "V"
+
+sixth_bin_genes_binary_df <- data.frame("GTEx" = c(723, 1921),
+                                      "LGRN" = c(918, 1726),
+                                      "Category" = c("have eQTLs", "have no eQTLs"))
+sixth_bin_genes_binary_df$bin <- "VI"
+
+seventh_bin_genes_binary_df <- data.frame("GTEx" = c(573, 2067),
+                                      "LGRN" = c(734, 1906),
+                                      "Category" = c("have eQTLs", "have no eQTLs")) 
+seventh_bin_genes_binary_df$bin <- "VII"
+
+eighth_bin_genes_binary_df <- data.frame("GTEx" = c(441, 2201),
+                                      "LGRN" = c(596, 2046),
+                                      "Category" = c("have eQTLs", "have no eQTLs")) 
+eighth_bin_genes_binary_df$bin <- "VIII"
+
+ninth_bin_genes_binary_df <- data.frame("GTEx" = c(292, 2356),
+                                      "LGRN" = c(432, 2216),
+                                      "Category" = c("have eQTLs", "have no eQTLs"))
+ninth_bin_genes_binary_df$bin <- "IX"
+
+tenth_bin_genes_binary_df <- data.frame("GTEx" = c(47, 2604),
+                                      "LGRN" = c(61, 2590),
+                                      "Category" = c("have eQTLs", "have no eQTLs")) 
+tenth_bin_genes_binary_df$bin <- "X"
+
+all_df <- rbind(first_bin_genes_binary_df,second_bin_genes_binary_df,third_bin_genes_binary_df,
+                fourth_bin_genes_binary_df, fifth_bin_genes_binary_df, sixth_bin_genes_binary_df,
+                seventh_bin_genes_binary_df, eighth_bin_genes_binary_df, ninth_bin_genes_binary_df,
+                tenth_bin_genes_binary_df)
+
+all_genes_binary_plot <- melt(all_df, id.vars = c("Category","bin")) 
+
+all_genes_plot_df <- all_genes_binary_plot %>% group_by(bin, variable) %>% 
+  mutate(prop = round((value/sum(value)), 2))
+
+lgrn_all_genes <- all_genes_plot_df %>% filter(variable == "LGRN")
+
+lgrn_all_genes$Category <- factor(lgrn_all_genes$Category,
+                           levels = c("have no eQTLs", "have eQTLs"))
+
+lgrn_all_genes$bin <- factor(lgrn_all_genes$bin,
+                             levels = c("I","II","III","IV","V","VI","VII","VIII","IX","X"))
+
+# figure 2b
+#pdf("../plots/figure2b.pdf", width = 7, height = 4)
+ggplot(lgrn_all_genes, aes(x = bin, y = prop, fill = Category)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(aes(label=paste0("N=", value)), 
+            position=position_stack(vjust=1.02), size = 2.5) +
+  scale_fill_manual(values = c("#D6D6D6", "#4EAECB")) +
+  scale_y_continuous(labels = function(x) paste0(x*100, "%")) +
+  theme_minimal() +
+  labs(x="", y = "Genes expressed in GTEx liver samples (%)", fill= "") +
+  theme(legend.position = "bottom")
+#dev.off()
+
+gtex_all_genes <- all_genes_plot_df %>% filter(variable == "GTEx")
+
+gtex_all_genes$Category <- factor(gtex_all_genes$Category,
+                           levels = c("have no eQTLs", "have eQTLs"))
+
+gtex_all_genes$bin <- factor(gtex_all_genes$bin,
+                             levels = c("I","II","III","IV","V","VI","VII","VIII","IX","X"))
+
+# supplementary figure 2a
+#pdf("../plots/sup_fig2a.pdf", width = 7, height = 4)
+ggplot(gtex_all_genes, aes(x = bin, y = prop, fill = Category)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(aes(label=paste0("N=", value)), 
+            position=position_stack(vjust=1.02), size = 2.5) +
+  scale_fill_manual(values = c("#D6D6D6", "#4EAECB")) +
+  scale_y_continuous(labels = function(x) paste0(x*100, "%")) +
+  theme_minimal() +
+  labs(x="", y = "Genes expressed in GTEx liver samples (%)", fill= "") +
+  theme(legend.position = "bottom")
+#dev.off()
+
+```
+
+## Figure 3C and Supplementary figure 2B
+```{r}
+
+## eQTL distribution in all bins
+## 
+lgrn_gtex_first_bin_eqtls_plot$bin <- "I"
+lgrn_gtex_second_bin_eqtls_plot$bin <- "II"
+lgrn_gtex_third_bin_eqtls_plot$bin <- "III"
+lgrn_gtex_fourth_bin_eqtls_plot$bin <- "IV"
+lgrn_gtex_fifth_bin_eqtls_plot$bin <- "V"
+lgrn_gtex_sixth_bin_eqtls_plot$bin <- "VI"
+lgrn_gtex_seventh_bin_eqtls_plot$bin <- "VII"
+lgrn_gtex_eighth_bin_eqtls_plot$bin <- "VIII"
+lgrn_gtex_ninth_bin_eqtls_plot$bin <- "IX"
+lgrn_gtex_tenth_bin_eqtls_plot$bin <- "X"
+
+all_lgrn_gtex_eqtls_df <- rbind(lgrn_gtex_first_bin_eqtls_plot, lgrn_gtex_second_bin_eqtls_plot, 
+                                 lgrn_gtex_third_bin_eqtls_plot, lgrn_gtex_fourth_bin_eqtls_plot,
+                                 lgrn_gtex_fifth_bin_eqtls_plot, lgrn_gtex_sixth_bin_eqtls_plot,
+                                 lgrn_gtex_seventh_bin_eqtls_plot, lgrn_gtex_eighth_bin_eqtls_plot,
+                                 lgrn_gtex_ninth_bin_eqtls_plot, lgrn_gtex_tenth_bin_eqtls_plot)
+
+lgrn_eqtls_df <- all_lgrn_gtex_eqtls_df %>% filter(variable == "In LGRN")
+gtex_eqtls_df <- all_lgrn_gtex_eqtls_df %>% filter(variable == "In GTEx")
+
+lgrn_eqtls_df$bin <- factor(lgrn_eqtls_df$bin,
+                             levels = c("I","II","III","IV","V","VI","VII","VIII","IX","X"))
+lgrn_eqtls_df_no_na <- na.omit(lgrn_eqtls_df)
+
+gtex_eqtls_df$bin <- factor(gtex_eqtls_df$bin,
+                             levels = c("I","II","III","IV","V","VI","VII","VIII","IX","X"))
+
+gtex_eqtls_df_no_na <- na.omit(gtex_eqtls_df)
+
+#pdf("../plots/figure2c.pdf", width = 6, height = 4)
+ggplot(lgrn_eqtls_df_no_na, aes(x=bin, y= log10(value))) +
+  geom_point(size = 1)+
+  geom_violin(trim=T, size = 0.20, fill = "#BCBEC0") +
+  #scale_fill_manual(values=c("#999999", "#E69F00")) +
+  labs(x="Bins", y= "log10(Number of eQTLs per gene)") +
+  theme_minimal()+
+  scale_y_continuous(limits = c(0,4), breaks = seq(0,4,by=1)) +
+  theme(axis.text.x = element_text(),
+          legend.position = "none")
+#dev.off()
+
+#pdf("../supp_fig2b.pdf", width = 6, height = 4)
+ggplot(gtex_eqtls_df_no_na, aes(x=bin, y= log10(value))) +
+  geom_point(size = 1)+
+  geom_violin(trim=T, size = 0.20, fill = "#BCBEC0") +
+  #scale_fill_manual(values=c("#999999", "#E69F00")) +
+  labs(x="Bins", y= "log10(Number of eQTLs per gene)") +
+  theme_minimal()+
+  scale_y_continuous(limits = c(0,4), breaks = seq(0,4,by=1)) +
+  theme(axis.text.x = element_text(),
+          legend.position = "none")
+#dev.off()
+```
+

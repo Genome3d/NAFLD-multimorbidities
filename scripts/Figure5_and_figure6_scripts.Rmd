@@ -1,0 +1,80 @@
+---
+title: "Figure5_and_suppfig5_script"
+author: "Sreemol Gokuladhas"
+date: "23/11/2021"
+output: html_document
+---
+
+## Figure 5A
+```{r}
+
+# Read pathway analysis results
+
+kegg_plot <- fread("../results/risk_genes_partners_in_kegg_pathways.txt",
+                   header = T, sep = "\t")
+
+#pdf("../../plots/figure5a.pdf", width = 5, height = 3.5)
+ggplot(kegg_plot, aes(-log2(p_value), term_name)) +
+  geom_point(aes(size = intersection_size, fill = -log2(p_value)), shape = 21, stroke = 0.1) +
+  #geom_text(aes(label=intersection_size, vjust=0.4, hjust=-0.09), size = 2) +
+  labs(x="-log2(p-value)", y = "", size = "No of genes") +
+  scale_fill_continuous(low = "yellow", high = "pink4", limits = c(0,10), breaks = seq(0,10, by = 2)) +
+  scale_y_discrete(labels = function(y) str_wrap(y, width = 30)) +
+  scale_x_continuous(expand = c(0.0,0.0), limits = c(4,9), breaks = seq(4,9,by=1),
+                     labels = function(x) paste0(x)) +
+  theme_minimal()+
+  theme(axis.text.y = element_text(size = 7, lineheight = 0.8),
+        axis.text.x = element_text(size = 7),
+        axis.title.x = element_text(size = 8),
+        legend.position = "bottom")
+#dev.off()
+
+```
+
+## Figure 5B
+```{r}
+# trait enrichment results
+
+d13_neighbor_gwas_enrich <- fread("../results/dg13_1stneighbors_gwassignificant_enrichment.txt", 
+                                  header = T, sep = "\t")
+
+#pdf("../../plots/figure5b.pdf", width = 5, height = 6)
+d13_neighbor_gwas_enrich %>% top_n(-30, adj_pval) %>% 
+  ggplot(aes(-log(adj_pval), trait)) +
+  geom_point(aes(color = -log(adj_pval), size = trait_eqtls)) +
+  #geom_text(aes(label=intersection_size, vjust=0.4, hjust=-0.09), size = 2.2) +
+  labs(x="-log10(adj-pvalue)", y = "") +
+  #scale_fill_continuous(low = "yellow", high = "pink4", limits = c(0,3), breaks = seq(0,3, by = 1)) +
+  scale_y_discrete(labels = function(y) str_wrap(y, width = 30)) +
+  scale_x_continuous(expand = c(0.0,0.0), limits = c(0,30), breaks = seq(0,30,by=10),
+                     labels = function(x) paste0(x)) +
+  scale_size_continuous(limits = c(0,15.5), breaks = seq(0,15.5,by=3)) +
+  theme_minimal()+
+  theme(axis.text.y = element_text(size = 7, lineheight = 0.8),
+        axis.text.x = element_text(size = 7),
+        axis.title.x = element_text(size = 8),
+        legend.position = "bottom")
+#dev.off()
+```
+
+## Figure 6
+```{r}
+# all genes combined analysis (genes from unaffected lgrn only, affected lgrn only and shared except HLA)
+# 
+all_res <- fread("../results/all_genes_except_hla_significant_enrichment.txt", header = T, sep = "\t")
+
+#pdf("../../plots/figure6.pdf", width = 6, height = 7)
+all_res  %>% 
+  ggplot(aes(-log2(adj_pval),trait))+
+  geom_point(aes(size = trait_eqtls, fill = -log2(adj_pval)), shape = 21, stroke = 0.1)+
+  scale_y_discrete(labels = function(y) str_wrap(y, width = 55), name = "GWAS traits") +
+  scale_x_continuous(expand = c(0.0,0.0), limits = c(0,60), breaks = seq(0,60,by=10)) +
+  scale_size_continuous(limits = c(0,16), breaks = seq(0,16,by=3)) +
+  scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 7, lineheight = 0.8),
+        axis.text.x = element_text(size = 7, hjust=1),
+        axis.title.x = element_text(size = 8))
+#dev.off()
+```
+

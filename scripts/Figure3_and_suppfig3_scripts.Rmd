@@ -1,0 +1,400 @@
+---
+title: "Figure3_and_suppfig3_scripts"
+author: "Sreemol Gokuladhas"
+date: "22/11/2021"
+output: html_document
+---
+
+## Figure 3A
+```{r}
+## NAFLD input snps
+ 
+nafld_snps <- fread("../data/nafld_with_ld_snps_input_map.txt", header = T, sep = "\t")
+
+## nafld input snps hg38 position data
+## 
+nafld_snps_hg38 <- fread("../data/nafld_input_snps_hg38_pos.txt", header = T, sep = "\t")
+
+nafld_snps_hg38 <- nafld_snps_hg38 %>% mutate(hg38_pos = paste0(snp_chr,"_",snp_locus)) %>% 
+  dplyr::select(snp, hg38_pos) %>%  unique()
+
+nafld_snps <- merge(nafld_snps, nafld_snps_hg38, by = "snp")
+
+# Read LGRN data (unaffected)
+
+lgrn <- fread("../results/significant_eqtls_liver_fdr_recalculated.txt",
+              header = T, sep = "\t")
+
+## NAFLD SNPs in LGRN network (unaffected)
+## 
+unaffected_res <- lgrn %>% filter(snp %in% nafld_snps$snp) %>% 
+  dplyr::select(snp,gene,log2_aFC,eqtl_pval,adj_pval) %>% 
+  mutate(pairs = paste0(snp,"_",gene)) %>% 
+  unique()
+  
+nu_eqtls <- data.frame(snp = unique(unaffected_res$snp)) #16
+nu_egenes <- data.frame(gene = unique(unaffected_res$gene)) #7
+
+unaffected_eqtls_df <- data.frame(cat = c("eQTLs", "non-eQTLs"),
+                      count = c(16, 723))
+
+unaffected_eqtls_df$prop <- round(unaffected_eqtls_df$count/sum(unaffected_eqtls_df$count),2)
+
+#pdf("../plots/figure3a.pdf", width = 4, height = 4.5)
+ggplot(unaffected_eqtls_df, aes(x= cat, y = prop,
+                        fill = cat))+
+  geom_bar(stat = "identity", width = 0.6) +
+  scale_fill_manual(values = c("#F7941D", "#808285")) +
+  geom_text(aes(label=paste0("N=", count)), position=position_dodge(width=0.6), vjust=-0.25, size = 3) +
+  scale_y_continuous(labels = function(x) paste0(x*100, "%"), expand = c(0.01,0.01,0.01,0.01),
+                     limits = c(0,1)) +
+  theme_minimal() +
+  labs(x="", y = "Proportion of NAFLD SNPs", fill= "")+
+  theme(axis.text = element_text(size = 7, colour = "black"),
+        axis.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.key = element_rect(size = 0.5, colour = "white"),
+        legend.position = "none")
+#dev.off()
+```
+
+## Figure 3B
+```{r}
+# Read LGRN data (affected)
+
+affected_lgrn <- fread("../results/yoo_data_results.txt", 
+                       header = T, sep = "\t")
+
+affected_lgrn$NAFLD_FDR <- as.numeric(gsub(".E", "e", affected_lgrn$NAFLD_FDR)) 
+affected_lgrn$NAFLD_p <- as.numeric(gsub(".E", "e", affected_lgrn$NAFLD_p)) 
+
+## NAFLD SNPs in affected LGRN
+## 
+affected_res <- affected_lgrn %>% filter(SNP_ID %in% nafld_snps$snp & NAFLD_FDR < 0.05) %>% 
+  dplyr::select(SNP_ID,gene,NAFLD_p,NAFLD_FDR) %>% 
+  mutate(pairs = paste0(SNP_ID,"_",gene)) %>% 
+  unique()
+
+na_eqtls <- data.frame(snp = unique(affected_res$SNP_ID)) #85
+na_egenes <- data.frame(gene = unique(affected_res$gene)) #17
+
+affected_eqtls_df <- data.frame(cat = c("eQTLs", "non-eQTLs"),
+                      count = c(85, 654))
+
+affected_eqtls_df$prop <- round(affected_eqtls_df$count/sum(affected_eqtls_df$count),2)
+
+#pdf("../plots/figure3b.pdf", width = 4, height = 4.5)
+ggplot(affected_eqtls_df, aes(x= cat, y = prop,
+                        fill = cat))+
+  geom_bar(stat = "identity", width = 0.6) +
+  scale_fill_manual(values = c("#F7941D", "#808285")) +
+  geom_text(aes(label=paste0("N=", count)), position=position_dodge(width=0.6), vjust=-0.25, size = 3) +
+  scale_y_continuous(labels = function(x) paste0(x*100, "%"), expand = c(0.01,0.01,0.01,0.01),
+                     limits = c(0,1)) +
+  theme_minimal() +
+  labs(x="", y = "Proportion of NAFLD SNPs (%)", fill= "")+
+  theme(axis.text = element_text(size = 7, colour = "black"),
+        axis.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.key = element_rect(size = 0.5, colour = "white"),
+        legend.position = "none")
+#dev.off()
+```
+
+## Figure 3C
+```{r}
+
+## Ensembl annotation file
+ 
+ensembl_annotation <- fread("../results/ensembl_gene_biotypes.txt",
+                                sep = "\t",header = T)
+
+## Type of genes in unaffected
+
+unaffected_gene_type <- merge(nu_egenes, ensembl_annotation, by.x = "gene", by.y = "hgnc_symbol") # 2
+
+## Plot the results
+
+unaffected_genes_plot_df <- data.frame(type = c("Protein-coding genes", "Other genes"),
+                 count = c(2, 5))
+unaffected_genes_plot_df$prop <- round(unaffected_genes_plot_df$count/sum(unaffected_genes_plot_df$count),2)
+
+#pdf("../plots/figure3c.pdf", height = 4, width = 4)
+ggplot(unaffected_genes_plot_df, 
+       aes(factor(type, levels = c("Protein-coding genes", "Other genes")), prop, 
+           fill = factor(type, levels = c("Protein-coding genes", "Other genes")))) +
+  geom_bar(stat = "identity", width = 0.6) +
+  geom_text(aes(label= paste0("N=", count)), position=position_dodge(width=0.6), 
+            vjust=-0.25, size = 3) +
+  labs(x = "", 
+  y = paste0("Proportion of target genes of NAFLD-eQTLs", "\n", "within unaffected-LGRN"), 
+  fill = "") +
+  scale_y_continuous(labels = function(x) paste0(x*100, "%"), limits = c(0,0.75),
+                     breaks = seq(0,0.75,by=0.10), expand = c(0.01,0)) +
+  scale_fill_manual(values = c("#C4C035", "#186194"))+
+  theme_minimal() +
+  theme(legend.position = "None",
+        axis.text = element_text(size = 9), 
+        axis.title = element_text(size = 10),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 9, face = "bold"))
+#dev.off()
+```
+
+## Figure 3D
+```{r}
+
+## Ensembl annotation file
+
+ensembl_annotation <- fread("../results/ensembl_gene_biotypes.txt",
+                                sep = "\t",header = T)
+
+## Type of genes in affected
+## 
+affected_gene_type <- merge(na_egenes, ensembl_annotation, by.x = "gene", by.y = "hgnc_symbol") # 10
+
+## Plot the results
+## 
+affected_genes_plot_df <- data.frame(type = c("Protein-coding genes", "Other genes"),
+                 count = c(10, 7))
+affected_genes_plot_df$prop <- round(affected_genes_plot_df$count/sum(affected_genes_plot_df$count),2)
+
+#pdf("../plots/figure3d.pdf", height = 4, width = 4)
+ggplot(affected_genes_plot_df, 
+       aes(factor(type, levels = c("Protein-coding genes", "Other genes")), prop, 
+           fill = factor(type, levels = c("Protein-coding genes", "Other genes")))) +
+  geom_bar(stat = "identity", width = 0.8) +
+  geom_text(aes(label= paste0("N=", count)), position=position_dodge(width=0.8), 
+            vjust=-0.25, size = 3) +
+  labs(x = "", 
+       y = paste0("Proportion of target genes of NAFLD-eQTLs","\n","within diseased-LGRN"), 
+       fill = "") +
+  scale_y_continuous(labels = function(x) paste0(x*100, "%"), limits = c(0,0.6),
+                     breaks = seq(0,0.6,by=0.1), expand = c(0.01,0)) +
+  scale_fill_manual(values = c("#C4C035", "#186194"))+
+  theme_minimal() +
+  theme(legend.position = "None",
+        axis.text = element_text(size = 9),
+        axis.title = element_text(size = 10),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 9, face = "bold"))
+#dev.off()
+```
+
+## Figure 3E
+```{r}
+
+## No of genes overlap between affected and unaffected 
+
+genes_overlap <- list(unaffected = unaffected_res$gene, affected = affected_res$gene)
+
+#pdf("../plots/figure3e.pdf", height = 4, width = 4)
+ggvenn(
+  genes_overlap,
+  fill_color = c("#D1D3D4", "#F3E886"), fill_alpha = 0.8,
+  stroke_size = 0.3, set_name_size = 4, digits = 0,
+  text_size = 3
+  )
+#dev.off()
+```
+
+## Supplementary figure 3A
+```{r}
+
+library(haploR)
+
+## Haploreg analysis of the nafld input SNPs
+## 
+nafld_snps <- fread("../data/nafld_with_ld_snps_input_map.txt", header = T, sep = "\t")
+
+nafld_snps_hg38 <- fread("../data/nafld_input_snps_hg38_pos.txt", header = T, sep = "\t")
+
+nafld_snps_hg38 <- nafld_snps_hg38 %>% mutate(hg38_pos = paste0("chr",snp_chr,"_",snp_locus)) %>% 
+  dplyr::select(snp, hg38_pos) %>%  unique()
+
+nafld_snps <- merge(nafld_snps, nafld_snps_hg38, by = "snp")
+
+
+haplor_res <- queryHaploreg(query = nafld_snps$snp, 
+                          ldThresh = NA,
+                          ldPop = "EUR",
+                          url = "https://pubs.broadinstitute.org/mammals/haploreg/haploreg.php",
+                          verbose = T,
+                          timeout = 1000000)
+
+haplor_res_subset <- haplor_res  %>% dplyr::select(query_snp_rsid, dbSNP_functional_annotation, 
+                                            GENCODE_id, GENCODE_name)
+
+haplor_res_subset$dbSNP_functional_annotation <-
+  str_replace_all(haplor_res_subset$dbSNP_functional_annotation, c("\\." = "Intergenic",
+                                                                   "INT" = "Intronic",
+                                                                   "U3" = "3'-UTR",
+                                                                   "SYN" = "Synonymous",
+                                                                   "NSM" = "Missense",
+                                                                   "U5" = "5'-UTR",
+                                                                   "NSN" = "Nonsense",
+                                                                   "NSF" = "Frameshift"))
+
+nafld_input_haploreg_results <- merge(nafld_snps, haplor_res_subset, by.x = "snp", by.y = "query_snp_rsid")
+
+# separate SNPs with multiple annotations each to a new row
+
+nafld_input_haploreg_results_sep <- nafld_input_haploreg_results %>% 
+  mutate(dbSNP_functional_annotation = strsplit(dbSNP_functional_annotation, ";")) %>%
+  unnest(dbSNP_functional_annotation)
+
+
+# write.table(nafld_input_haploreg_results_sep, "../results/nafld_input_snps_haploreg_results.txt", col.names = T, row.names = F, sep = "\t", quote = F)
+
+## NAFLD input SNPs (N = 739) haploreg results
+
+nafld_haploreg <- fread("../results/nafld_input_snps_haploreg_results.txt", header = T, sep = "\t")
+
+nafld_haploreg <- nafld_haploreg %>% dplyr::select(snp, dbSNP_functional_annotation) %>% unique()
+
+## unaffected eqtl snp annotation
+## 
+unaffected_eqtl_type <- merge(nu_eqtls, nafld_haploreg, by = "snp")
+
+## count number of snps associated with each category
+
+unaffected_eqtl_type_df <- aggregate(snp ~ dbSNP_functional_annotation,
+                        unaffected_eqtl_type, 
+                        function(x) paste(length(unique(x)), collapse = ","))
+
+#No_of_snps <- No_of_snps %>% mutate(prop = (as.numeric(query_snp_rsid)/2083)) %>% 
+#  arrange(desc(as.numeric(query_snp_rsid)))# consequences of snps are different in the isoforms of the genes
+
+unaffected_eqtl_type_df$dbSNP_functional_annotation <-
+  factor(unaffected_eqtl_type_df$dbSNP_functional_annotation,
+         levels = c("Intergenic", "Intronic", "Missense", "3'-UTR", "Synonymous", "5'-UTR", "Nonsense"))
+  
+#pdf("../plots/supfig3a.pdf", width = 4, height = 3.5)
+unaffected_eqtl_type_df %>% mutate(prop = (as.numeric(snp)/16)) %>% 
+  arrange(desc(as.numeric(snp))) %>% 
+  ggplot(aes(x=dbSNP_functional_annotation, y = prop)) +
+  geom_bar(stat="identity", width=0.5, position = "dodge", fill = "lightcyan4") +
+  geom_text(aes(label = paste0("N=", snp)), vjust = -0.5, hjust = 0.4, size = 3,
+            position = position_dodge(width = 0.5)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
+                     expand = c(0.01,0.01), limits = c(0, 0.75), 
+                     breaks = seq(0, 0.75, by = 0.1))+
+  labs(fill = "", y = "Proportion of NAFLD-eQTLs in unaffected-LGRN", x = "") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, hjust=1, size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title = element_text(size = 9),
+        legend.position = c(.9,.9),
+        legend.background = element_blank(),
+        legend.text = element_text(size = 5),
+        legend.key.size = unit(0.3, "cm"))
+#dev.off()
+
+```
+
+## Supplementary figure 3B
+```{r}
+## Nafld yoo et al results eqtl type plot
+
+affected_eqtl_type <- merge(na_eqtls, nafld_haploreg, by = "snp")
+
+# Data manipulation to plot the results
+
+affected_eqtl_type_df <- aggregate(snp ~ dbSNP_functional_annotation,
+                        affected_eqtl_type, 
+                        function(x) paste(length(unique(x)), collapse = ","))
+
+#No_of_snps <- No_of_snps %>% mutate(prop = (as.numeric(query_snp_rsid)/2083)) %>% 
+#  arrange(desc(as.numeric(query_snp_rsid)))# consequences of snps are different in the isoforms of the genes
+
+affected_eqtl_type_df$dbSNP_functional_annotation <-
+  factor(affected_eqtl_type_df$dbSNP_functional_annotation,
+         levels = c("Intergenic", "Intronic", "Missense", "3'-UTR", "Synonymous", "5'-UTR", "Nonsense"))
+  
+#pdf("../plots/supfig3b.pdf", width = 4, height = 3.5)
+affected_eqtl_type_df %>% mutate(prop = (as.numeric(snp)/85)) %>% 
+  arrange(desc(as.numeric(snp))) %>% 
+  ggplot(aes(x=dbSNP_functional_annotation, y = prop)) +
+  geom_bar(stat="identity", width=0.5, position = "dodge", fill = "lightcyan4") +
+  geom_text(aes(label = paste0("N=", snp)), vjust = -0.5, hjust = 0.4, size = 3,
+            position = position_dodge(width = 0.5)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1), expand = c(0.01,0.01), limits = c(0, 0.52), breaks = seq(0, 0.52, by = 0.1))+
+  labs(fill = "", y = "Proportion of NAFLD-eQTLs in diseased-LGRN", x = "") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, hjust=1, size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title = element_text(size = 9),
+        legend.position = c(.9,.9),
+        legend.background = element_blank(),
+        legend.text = element_text(size = 5),
+        legend.key.size = unit(0.3, "cm"))
+#dev.off()
+```
+
+## Supplementary figure 3C
+```{r}
+
+## Number of NAFLD SNPs (N = 739) overlapped with enhancer peaks in liver cells
+ 
+nafld_enhancers <- fread("../results/nafld_input_739_enhancer_result.txt", sep = "\t", header = T)
+
+nafld_snps$enhancer <- ifelse(nafld_snps$snp %in% nafld_enhancers$snp, "Enhancers", "Non-enhancers")
+
+## Check how many unaffected data eqtls mark enhancer regions
+ 
+unaffected_enhan_eqtls <- nafld_snps %>% filter(snp %in% nu_eqtls$snp & enhancer == "Enhancers") %>%
+  unique() #3
+
+unaffected_enhan_df <- data.frame(cat = c("Enhancers", "Non-enhancers"),
+                      count = c(3, 13))
+
+unaffected_enhan_df$prop <- round(unaffected_enhan_df$count/sum(unaffected_enhan_df$count),2)
+
+#pdf("../plots/supp_fig3c.pdf", width = 4, height = 4.5)
+ggplot(unaffected_enhan_df, aes(x= cat, y = prop,
+                        fill = cat))+
+  geom_bar(stat = "identity", width = 0.6) +
+  scale_fill_manual(values = c("#6FC067", "#04783D")) +
+  geom_text(aes(label=paste0("N=", count)), position=position_dodge(width=0.6), vjust=-0.25, size = 3) +
+  scale_y_continuous(labels = function(x) paste0(x*100, "%"), expand = c(0.01,0.01,0.01,0.01),
+                     limits = c(0,0.9), breaks = seq(0, 0.9, by= 0.1)) +
+  theme_minimal() +
+  labs(x="", y = "Proportion of NAFLD-eQTLs in unaffected-LGRN", fill= "")+
+  theme(axis.text = element_text(size = 8),
+        axis.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        legend.key = element_rect(size = 0.5, colour = "white"),
+        legend.position = "none")
+#dev.off()
+```
+
+## Supplementary figure 3D
+```{r}
+## Check how many affected data eqtls mark enhancer regions
+
+affected_enhan_eqtls <- nafld_snps %>% filter(snp %in% na_eqtls$snp & enhancer == "Enhancers") %>%
+  unique() #23
+
+affected_enhan_df <- data.frame(cat = c("Enhancers", "Non-enhancers"),
+                      count = c(23, 62))
+
+affected_enhan_df$prop <- round(affected_enhan_df$count/sum(affected_enhan_df$count),2)
+
+#pdf("../plots/suppfig3d.pdf", width = 4, height = 4.5)
+ggplot(affected_enhan_df, aes(x= cat, y = prop,
+                        fill = cat))+
+  geom_bar(stat = "identity", width = 0.8) +
+  scale_fill_manual(values = c("#6FC067", "#04783D")) +
+  geom_text(aes(label=paste0("N=", count)), position=position_dodge(width=0.8), vjust=-0.25, size = 3) +
+  scale_y_continuous(labels = function(x) paste0(x*100, "%"), expand = c(0.01,0.01,0.01,0.01),
+                     limits = c(0,0.8), breaks = seq(0, 0.8, by= 0.1)) +
+  theme_minimal() +
+  labs(x="", y = "Proportion of NAFLD-eQTLs in diseased-LGRN", fill= "")+
+  theme(axis.text = element_text(size = 8),
+        axis.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        #legend.key = element_rect(size = 0.5, colour = "white"),
+        legend.position = "none")
+#dev.off()
+```
+
